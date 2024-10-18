@@ -7405,4 +7405,22 @@ div[data-for*=help_for] {
   padding: 15px;
 }
 
-/*# sourceMappingURL=main.css.map */
+#rxTopTable tr.unanswered>td {
+  opacity: 0.6;
+}
+
+#rxTopTable tr.tracked>td {
+  background-color: #f5e9e3;
+}
+
+#rxTopTable tr.active>.host {
+  font-weight: bold;
+}
+
+#rxTopTable tr>td.active {
+  font-weight: bold;
+}
+
+#toptalkers div {
+  overflow-y: auto;
+}
