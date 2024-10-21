@@ -44,7 +44,7 @@ import ipaddress
 def iftop(interface, target):
     try:
         sp = subprocess.run(
-            ['/usr/local/sbin/iftop', '-nNb', '-i', interface, '-s', '2', '-t'],
+            ['/usr/local/sbin/iftop', '-nNb', '-i', interface, '-s', '2', '-L', '400', '-t'],
             capture_output=True, text=True, timeout=10
         )
         target[interface] = sp.stdout
