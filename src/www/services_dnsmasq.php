@@ -464,8 +464,8 @@ $( document ).ready(function() {
                 </tr>
 <?php foreach (config_read_array('dnsmasq', 'hosts') as $i => $hostent): ?>
                 <tr>
-                  <td><?=htmlspecialchars(strtolower($hostent['host']));?></td>
-                  <td><?=htmlspecialchars(strtolower($hostent['domain']));?></td>
+                  <td><?=htmlspecialchars($hostent['host']);?></td>
+                  <td><?=htmlspecialchars($hostent['domain']);?></td>
                   <td><?=htmlspecialchars($hostent['ip']);?></td>
                   <td><?=htmlspecialchars($hostent['descr']);?></td>
                   <td class="text-nowrap">
@@ -476,8 +476,8 @@ $( document ).ready(function() {
 <?php if (isset($hostent['aliases']['item'])): ?>
 <?php foreach ($hostent['aliases']['item'] as $alias): ?>
                 <tr>
-                  <td><?=htmlspecialchars(strtolower($alias['host']));?></td>
-                  <td><?=htmlspecialchars(strtolower($alias['domain']));?></td>
+                  <td><?=htmlspecialchars($alias['host']);?></td>
+                  <td><?=htmlspecialchars($alias['domain']);?></td>
                   <td><?=gettext("Alias for");?> <?=$hostent['host'] ? htmlspecialchars($hostent['host'] . '.' . $hostent['domain']) : htmlspecialchars($hostent['domain']);?></td>
                   <td><?=htmlspecialchars($alias['description']);?></td>
                   <td class="text-nowrap">
