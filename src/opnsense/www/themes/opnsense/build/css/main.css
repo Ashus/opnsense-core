@@ -7370,3 +7370,36 @@ div[data-for*=help_for] {
 #toptalkers div {
   overflow-y: auto;
 }
+
+.tooltip.certificate-sans-tooltip {
+  max-width: calc(100vw - 30px);
+}
+
+.tooltip.certificate-sans-tooltip .tooltip-inner {
+  width: max-content;
+  max-width: calc(100vw - 30px);
+  overflow-x: auto;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tooltip.certificate-sans-tooltip ul {
+  margin: 5px 0;
+  padding-left: 18px;
+}
+
+.tooltip.certificate-sans-tooltip .certificate-sans-hostname {
+  margin: 0 0 5px;
+}
+
+.tooltip.certificate-sans-tooltip .certificate-sans-ipinfo {
+  margin-top: 5px;
+}
+
+.tooltip.certificate-sans-tooltip a {
+  color: #8ec5ff;
+}
+
+.tooltip.certificate-sans-tooltip a:hover {
+  color: #c6e3ff;
+}

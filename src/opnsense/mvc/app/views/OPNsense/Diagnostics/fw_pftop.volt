@@ -52,13 +52,20 @@
                     },
                     address: function (column, row) {
                         if (row[column.id+"_addr"]) {
-                            let addr_txt = row[column.id+"_addr"];
+                            const address = row[column.id+"_addr"];
+                            const port = row[column.id+"_port"];
+                            let addr_txt = address;
                             if (addr_txt.includes(":")) {
-                                addr_txt = addr_txt + ":[" + row[column.id+"_port"] + "]";
+                                addr_txt = addr_txt + ":[" + port + "]";
                             } else {
-                                addr_txt = addr_txt + ":" + row[column.id+"_port"];
+                                addr_txt = addr_txt + ":" + port;
                             }
-                            return addr_txt;
+                            return $("<a/>", {
+                                class: "certificate-sans",
+                                href: "#",
+                                "data-address": address,
+                                "data-port": port
+                            }).text(addr_txt).prop("outerHTML");
                         }
                         return "";
                     }
@@ -90,6 +97,86 @@
                     $("#ruleid").val(init_state);
                     $("#ruleid").change();
                 }
+            }
+        });
+
+        let activeCertificateLink = null;
+
+        function certificateTooltip(message, domains, address, hostname) {
+            const content = $("<div/>");
+            if (hostname) {
+                content.append($("<div/>", {class: "certificate-sans-hostname"}).text(hostname));
+            }
+            content.append($("<div/>").text(message));
+            if (domains.length) {
+                const domainList = $("<ul/>");
+                domains.forEach(function(domain) {
+                    domainList.append($("<li/>").text(domain));
+                });
+                content.append(domainList);
+            }
+            content.append(
+                $("<div/>", {class: "certificate-sans-ipinfo"}).append(
+                    $("<a/>", {
+                        href: "https://ipinfo.io/" + encodeURIComponent(address),
+                        target: "_blank"
+                    }).text("IPinfo")
+                )
+            );
+            return content.html();
+        }
+
+        $("#grid-pftop").on("click", ".certificate-sans", function(event) {
+            event.preventDefault();
+            const link = $(this);
+            const address = link.data("address");
+            const port = link.data("port");
+            if (activeCertificateLink && activeCertificateLink[0] !== link[0]) {
+                activeCertificateLink.tooltip("hide");
+            }
+            activeCertificateLink = link;
+            link.data("certificateTooltip", certificateTooltip(
+                "{{ lang._('Searching domains in the certificate...') }}",
+                [],
+                address,
+                null
+            ));
+            if (!link.data("bs.tooltip")) {
+                link.tooltip({
+                    container: "body",
+                    html: true,
+                    placement: "auto top",
+                    template: '<div class="tooltip certificate-sans-tooltip" role="tooltip"><div class="tooltip-arrow"></div><div class="tooltip-inner"></div></div>',
+                    title: function() {
+                        return link.data("certificateTooltip");
+                    },
+                    trigger: "manual",
+                    viewport: {
+                        selector: "body",
+                        padding: 15
+                    }
+                });
+            }
+            link.tooltip("show");
+            ajaxCall("/api/diagnostics/firewall/certificate_sans", {address: address, port: port}, function(data) {
+                let message = "{{ lang._('Certificate could not be retrieved.') }}";
+                if (data.status === "sni_required") {
+                    message = "{{ lang._('Server requires SNI; the domain cannot be determined from its IP address.') }}";
+                } else if (data.status === "ok") {
+                    message = data.domains.length
+                        ? "{{ lang._('Domains found in the certificate:') }}"
+                        : "{{ lang._('No DNS names found in the certificate.') }}";
+                }
+                link.data("certificateTooltip", certificateTooltip(message, data.domains || [], address, data.hostname));
+                if (activeCertificateLink && activeCertificateLink[0] === link[0]) {
+                    link.tooltip("show");
+                }
+            });
+        });
+        $(document).on("click.certificate-sans", function(event) {
+            if (activeCertificateLink && !$(event.target).closest(".certificate-sans, .tooltip").length) {
+                activeCertificateLink.tooltip("hide");
+                activeCertificateLink = null;
             }
         });
 

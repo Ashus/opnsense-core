@@ -277,6 +277,101 @@ class FirewallController extends ApiControllerBase
     }
 
     /**
+     * Retrieve DNS subject alternative names from a peer certificate.
+     */
+    public function certificateSansAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'error'];
+        }
+
+        $address = $this->request->getPost('address', 'string', '');
+        $port = (int)$this->request->getPost('port', 'int', 0);
+        if (!filter_var($address, FILTER_VALIDATE_IP) || $port < 1 || $port > 65535) {
+            return ['status' => 'error'];
+        }
+
+        $cacheKey = $address . ':' . $port;
+        $cache = $this->session->has('pf_top_certificate_sans_v3')
+            ? $this->session->get('pf_top_certificate_sans_v3')
+            : [];
+        if (is_array($cache) && isset($cache[$cacheKey])) {
+            return $cache[$cacheKey];
+        }
+
+        $pftop = json_decode((new Backend())->configdpRun('filter diag top'), true) ?? [];
+        $isActivePeer = false;
+        foreach ($pftop['details'] ?? [] as $row) {
+            foreach (['src', 'dst', 'gw'] as $field) {
+                if (
+                    ($row[$field . '_addr'] ?? null) === $address
+                    && (int)($row[$field . '_port'] ?? 0) === $port
+                ) {
+                    $isActivePeer = true;
+                    break 2;
+                }
+            }
+        }
+        if (!$isActivePeer) {
+            return ['status' => 'error'];
+        }
+
+        $hostname = @gethostbyaddr($address);
+        if ($hostname === false || $hostname === $address) {
+            $hostname = null;
+        }
+        $target = filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)
+            ? 'ssl://[' . $address . ']:' . $port
+            : 'ssl://' . $address . ':' . $port;
+        $context = stream_context_create([
+            'ssl' => [
+                'capture_peer_cert' => true,
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'SNI_enabled' => false
+            ]
+        ]);
+        $connection = @stream_socket_client($target, $errno, $errstr, 5, STREAM_CLIENT_CONNECT, $context);
+        $certificate = null;
+        if (is_resource($connection)) {
+            $options = stream_context_get_options($connection);
+            $certificate = $options['ssl']['peer_certificate'] ?? null;
+            fclose($connection);
+        }
+
+        $certificateInfo = $certificate === null ? false : openssl_x509_parse($certificate, false);
+        $domains = [];
+        if (is_array($certificateInfo) && !empty($certificateInfo['extensions']['subjectAltName'])) {
+            preg_match_all(
+                '/(?:^|,\\s*)DNS:([^,]+)/',
+                $certificateInfo['extensions']['subjectAltName'],
+                $matches
+            );
+            $domains = array_values(array_unique(array_map('trim', $matches[1])));
+        }
+        $invalidNames = ['invalid.invalid', 'invalid2.invalid'];
+        $requiresSni = is_array($certificateInfo) && (
+            in_array($certificateInfo['subject']['CN'] ?? '', $invalidNames, true)
+            || !empty(array_intersect($domains, $invalidNames))
+        );
+        $response = [
+            'status' => $certificateInfo === false ? 'error' : ($requiresSni ? 'sni_required' : 'ok'),
+            'domains' => $requiresSni ? [] : $domains,
+            'hostname' => $hostname
+        ];
+
+        if (!is_array($cache)) {
+            $cache = [];
+        } elseif (count($cache) >= 100) {
+            array_shift($cache);
+        }
+        $cache[$cacheKey] = $response;
+        $this->session->set('pf_top_certificate_sans_v3', $cache);
+
+        return $response;
+    }
+
+    /**
      * delete / drop a specific state by state+creator id
      */
     public function delStateAction($stateid, $creatorid)

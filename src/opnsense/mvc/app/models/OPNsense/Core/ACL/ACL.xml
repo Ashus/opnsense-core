@@ -126,6 +126,7 @@
         <patterns>
             <pattern>ui/diagnostics/firewall/pf_top*</pattern>
             <pattern>api/diagnostics/firewall/query_pf_top</pattern>
+            <pattern>api/diagnostics/firewall/certificate_sans</pattern>
             <pattern>api/diagnostics/firewall/list_rule_ids</pattern>
         </patterns>
     </page-diagnostics-system-pftop>
