@@ -31,6 +31,7 @@ import tempfile
 import time
 import traceback
 import subprocess
+import threading
 from .. import syslog_error
 from .base import BaseAction
 
@@ -38,6 +39,8 @@ from .base import BaseAction
 class Action(BaseAction):
     temp_prefix = 'tmpcfd_'
     cached_results = None
+    singleflight_results = None
+    singleflight_lock = threading.Lock()
 
     def cache_flush(self, parameters):
         if Action.cached_results is None or not self.cache_ttl:
@@ -53,7 +56,8 @@ class Action(BaseAction):
         super().execute(parameters, message_uuid, *args, **kwargs)
         try:
             script_command = self._cmd_builder(parameters)
-            script_hash = hashlib.sha256(script_command.encode()).hexdigest() if self.cache_ttl else None
+            script_hash = hashlib.sha256(script_command.encode()).hexdigest() \
+                if self.cache_ttl or self.singleflight else None
         except TypeError as e:
             return str(e)
 
@@ -61,11 +65,47 @@ class Action(BaseAction):
             # Cache cleanup on startup (first executed script_output action)
             # Although in theory we should lock this operation, the end only risk is leaving some
             # temp files which will eventually be cleaned-up on a successive restart
-            for filename in glob.glob("%s/%s*"% (tempfile.gettempdir(), Action.temp_prefix)):
-                os.remove(filename)
-            Action.cached_results = {}
+            with Action.singleflight_lock:
+                if Action.cached_results is None:
+                    for filename in glob.glob("%s/%s*"% (tempfile.gettempdir(), Action.temp_prefix)):
+                        os.remove(filename)
+                    Action.cached_results = {}
+                    Action.singleflight_results = {}
 
         try:
+            if self.singleflight:
+                with Action.singleflight_lock:
+                    if script_hash not in Action.singleflight_results:
+                        fd, output_filename = tempfile.mkstemp(prefix=Action.temp_prefix)
+                        os.close(fd)
+                        Action.singleflight_results[script_hash] = output_filename
+                    else:
+                        output_filename = Action.singleflight_results[script_hash]
+
+                with open(output_filename, 'a+') as output_stream:
+                    try:
+                        fcntl.flock(output_stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        # Another request is sampling this command. Return its completed output.
+                        fcntl.flock(output_stream, fcntl.LOCK_EX)
+                        output_stream.seek(0)
+                        return output_stream.read()
+
+                    with tempfile.NamedTemporaryFile() as error_stream:
+                        output_stream.seek(0)
+                        output_stream.truncate()
+                        subprocess.run(script_command, env=self.config_environment, shell=True,
+                                       check=not self.disable_errors, stdout=output_stream, stderr=error_stream)
+                        output_stream.seek(0)
+                        error_stream.seek(0)
+                        script_output = output_stream.read()
+                        script_error_output = error_stream.read()
+                        if len(script_error_output) > 0:
+                            syslog_error('[%s] Script action stderr returned "%s"' % (
+                                message_uuid, script_error_output.strip()[:255]
+                            ))
+                        return script_output
+
             # use cache for requested script when not yet expired
             if script_hash in Action.cached_results and Action.cached_results[script_hash]['expire'] > time.time() \
                     and os.path.isfile(Action.cached_results[script_hash]['filename']):

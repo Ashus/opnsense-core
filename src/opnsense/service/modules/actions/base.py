@@ -47,6 +47,7 @@ class BaseAction:
             self.cache_ttl = int(action_parameters['cache_ttl'])
         else:
             self.cache_ttl = None
+        self.singleflight = action_parameters.get('singleflight', '').lower().strip() in ('1', 'yes', 'true')
         self.allowed_groups = set()
         for item in action_parameters.get('allowed_groups', '').split(','):
             if item:

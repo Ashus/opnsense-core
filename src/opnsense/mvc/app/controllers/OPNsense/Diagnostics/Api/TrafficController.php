@@ -82,6 +82,7 @@ class TrafficController extends ApiControllerBase
                 $ifmap[(string)$config->interfaces->$intf->if] = $intf;
             }
         }
+        sort($iflist);
         if (count($iflist) > 0) {
             $data = (new Backend())->configdpRun('interface show top', [implode(",", $iflist)]);
             $data = json_decode($data, true);

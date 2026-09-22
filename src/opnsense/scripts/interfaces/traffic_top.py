@@ -45,7 +45,7 @@ def iftop(interface, target):
     try:
         sp = subprocess.run(
             ['/usr/local/sbin/iftop', '-nNb', '-i', interface, '-s', '2', '-L', '400', '-t'],
-            capture_output=True, text=True, timeout=10
+            capture_output=True, text=True, timeout=4
         )
         target[interface] = sp.stdout
     except subprocess.TimeoutExpired:
