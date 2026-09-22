@@ -96,4 +96,26 @@ class TrafficController extends ApiControllerBase
         }
         return $response;
     }
+
+    /**
+     * resolve top traffic host names
+     * @param $addresses string comma separated IP addresses
+     * @return array
+     */
+    public function ResolveAction($addresses)
+    {
+        $validAddresses = [];
+        foreach (explode(',', rawurldecode($addresses)) as $address) {
+            if (filter_var($address, FILTER_VALIDATE_IP) !== false) {
+                $validAddresses[] = $address;
+            }
+        }
+        $validAddresses = array_slice(array_unique($validAddresses), 0, 200);
+        if (count($validAddresses) === 0) {
+            return [];
+        }
+        $response = (new Backend())->configdpRun('interface resolve top', [implode(',', $validAddresses)]);
+        $response = json_decode($response, true);
+        return is_array($response) ? $response : [];
+    }
 }

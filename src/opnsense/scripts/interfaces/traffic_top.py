@@ -156,7 +156,12 @@ if __name__ == '__main__':
     result = dict()
     parser = argparse.ArgumentParser()
     parser.add_argument('--interfaces', help='interface(s) to sample')
+    parser.add_argument('--resolve', help='comma separated addresses to resolve')
     cmd_args = parser.parse_args()
+    if cmd_args.resolve:
+        print(ujson.dumps(AsyncLookup().collect(cmd_args.resolve.split(','))))
+        sys.exit()
+
     all_local_addresses = local_addresses()
     interfaces = cmd_args.interfaces.split(',')
     iftop_data = dict()
@@ -230,9 +235,8 @@ if __name__ == '__main__':
 
         # XXX: sort output, limit output results to max 200 (safety precaution)
         top_hosts = sorted(agg_results.values(), key=lambda x: x['rate_bits'], reverse=True)[:200]
-        reverse_lookup = AsyncLookup().collect([x['address'] for x in top_hosts])
         for host in top_hosts:
-            host['rname'] = reverse_lookup[host['address']] if host['address'] in reverse_lookup else ""
+            host['rname'] = ""
             host['rate_in'] = to_bformat(host['rate_bits_in'])
             host['rate_out'] = to_bformat(host['rate_bits_out'])
             host['rate'] = to_bformat(host['rate_bits'])

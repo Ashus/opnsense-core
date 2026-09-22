@@ -334,6 +334,11 @@
                             tr.find('[data-toggle="tooltip"]').tooltip();
                             target.append(tr);
                         }
+                        if (item.rname) {
+                            tr.find('td.host').empty().append(
+                                $("<span/>").text(item.rname), $("<small/>").text("(" + item.address + ")")
+                            );
+                        }
                         ['in', 'out'].forEach(function(dir) {
                             tr.data('bps_'+dir, item['rate_bits_'+dir]);
                             tr.data('total_'+ dir, tr.data('total_'+ dir) + item['cumulative_bytes_'+dir]);
@@ -403,6 +408,50 @@
 
         // Store references to the charts globally
         let g_charts = {traffic: [], traffic_top: []};
+        let g_resolved_names = {};
+        let g_pending_names = new Set();
+
+        function update_top_host_names(names) {
+            $('#rxTopTable > tbody').find('tr').each(function() {
+                const tr = /** @type JQuery */ $(this);
+                const address = tr.attr('data-address');
+                if (names[address]) {
+                    tr.find('td.host').empty().append(
+                        $("<span/>").text(names[address]), $("<small/>").text("(" + address + ")")
+                    );
+                }
+            });
+        }
+
+        function resolve_top_names(data) {
+            let addresses = [];
+            Object.keys(data).forEach(function(intf) {
+                data[intf].records.forEach(function(item) {
+                    if (g_resolved_names[item.address] !== undefined) {
+                        item.rname = g_resolved_names[item.address];
+                    } else if (!g_pending_names.has(item.address)) {
+                        g_pending_names.add(item.address);
+                        addresses.push(item.address);
+                    }
+                });
+            });
+            if (addresses.length > 0) {
+                ajaxGet('/api/diagnostics/traffic/resolve/' + encodeURIComponent(addresses.join(',')), {}, function(data, status) {
+                    addresses.forEach(function(address) {
+                        g_pending_names.delete(address);
+                    });
+                    if (status == 'success') {
+                        addresses.forEach(function(address) {
+                            if (data[address] === undefined) {
+                                g_resolved_names[address] = '';
+                            }
+                        });
+                        Object.assign(g_resolved_names, data);
+                        update_top_host_names(data);
+                    }
+                });
+            }
+        }
 
         $("select.graph-options").change(function() {
             if (window.localStorage) {
@@ -513,6 +562,7 @@
                 if ($("#interfaces").val().length > 0) {
                     ajaxGet('/api/diagnostics/traffic/top/' + $("#interfaces").val().join(","), {}, function(data, status){
                         if (status == 'success') {
+                            resolve_top_names(data);
                             update_top_charts(g_charts['traffic_top'], data);
                             updateTopTable(data);
                             top_traffic_poller();
