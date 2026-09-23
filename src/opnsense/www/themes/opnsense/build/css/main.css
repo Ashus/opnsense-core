@@ -7367,6 +7367,14 @@ div[data-for*=help_for] {
   font-weight: bold;
 }
 
+#rxTopTable th[data-sort] {
+  cursor: pointer;
+}
+
+#rxTopTable th.active-sort {
+  text-decoration: underline;
+}
+
 #toptalkers div {
   overflow-y: auto;
 }

@@ -281,6 +281,30 @@
         /**
          * iftop (top talkers) update
          */
+        let g_top_table_sort = 'default';
+
+        function sortTopTable() {
+            const target = $('#rxTopTable > tbody');
+            $('#rxTopTable th[data-sort]').removeClass('active-sort')
+                .filter('[data-sort="' + g_top_table_sort + '"]').addClass('active-sort');
+            target.find('tr').sort(function(a, b) {
+                const aRow = $(a);
+                const bRow = $(b);
+                if (g_top_table_sort !== 'default') {
+                    return parseInt(bRow.data(g_top_table_sort)) - parseInt(aRow.data(g_top_table_sort));
+                }
+
+                const aTotal = parseInt(aRow.data('bps_in')) + parseInt(aRow.data('bps_out'));
+                const bTotal = parseInt(bRow.data('bps_in')) + parseInt(bRow.data('bps_out'));
+                if (bTotal === 0 && aTotal === 0) {
+                    // sort by age (last seen)
+                    return parseInt(bRow.data('last_seen')) - parseInt(aRow.data('last_seen'));
+                }
+
+                return bTotal - aTotal;
+            }).appendTo(target);
+        }
+
         function updateTopTable(data) {
             const zeroBytes = byteFormat(0);
             const useBytes = $('#units').val() === 'bytes';
@@ -386,17 +410,7 @@
                 tr.toggleClass('active', active);
             });
 
-            // sort by current top consumer
-            target.find('tr').sort(function(a, b) {
-                let a_total = parseInt($(a).data('bps_in')) + parseInt($(a).data('bps_out'));
-                let b_total = parseInt($(b).data('bps_in')) + parseInt($(b).data('bps_out'));
-                if (b_total === 0 && a_total === 0) {
-                    // sort by age (last seen)
-                    return  parseInt($(b).data('last_seen')) - parseInt($(a).data('last_seen'));
-                } else {
-                    return  b_total - a_total;
-                }
-            }).appendTo(target);
+            sortTopTable();
             // cleanup deselected interface rows
             let intsshow = $("#interfaces").val();
             $('#rxTopTable > tbody').find('tr').each(function(){
@@ -410,6 +424,52 @@
         let g_charts = {traffic: [], traffic_top: []};
         let g_resolved_names = {};
         let g_pending_names = new Set();
+        let g_interface_polling = false;
+        let g_latest_top_data = null;
+        let g_latest_top_data_version = 0;
+        let g_top_chart_data_version = 0;
+        let g_top_table_data_version = 0;
+
+        function isGraphTabActive() {
+            return $('#graph').hasClass('active');
+        }
+
+        function refreshTrafficCharts() {
+            if (g_interface_polling || !isGraphTabActive()) {
+                return;
+            }
+
+            g_interface_polling = true;
+            ajaxGet('/api/diagnostics/traffic/interface', {}, function(data, status) {
+                g_interface_polling = false;
+                if (isGraphTabActive() && data.interfaces !== undefined) {
+                    update_traffic_charts(g_charts['traffic'], data);
+                }
+            });
+        }
+
+        function updateTopCharts() {
+            if (g_latest_top_data !== null && g_top_chart_data_version !== g_latest_top_data_version) {
+                update_top_charts(g_charts['traffic_top'], g_latest_top_data);
+                g_top_chart_data_version = g_latest_top_data_version;
+            }
+        }
+
+        function updateTopTableFromCache() {
+            if (g_latest_top_data !== null && g_top_table_data_version !== g_latest_top_data_version) {
+                updateTopTable(g_latest_top_data);
+                g_top_table_data_version = g_latest_top_data_version;
+            }
+        }
+
+        function updateActiveTrafficView() {
+            if (isGraphTabActive()) {
+                refreshTrafficCharts();
+                updateTopCharts();
+            } else {
+                updateTopTableFromCache();
+            }
+        }
 
         function update_top_host_names(names) {
             $('#rxTopTable > tbody').find('tr').each(function() {
@@ -550,11 +610,7 @@
              * poll for new stats and update selected charts
              */
             (function traffic_poller() {
-                ajaxGet("/api/diagnostics/traffic/interface", {}, function(data, status) {
-                    if (data.interfaces !== undefined) {
-                        update_traffic_charts(g_charts['traffic'], data);
-                    }
-                });
+                refreshTrafficCharts();
                 setTimeout(traffic_poller, g_charts['interval']);
             })();
 
@@ -562,9 +618,10 @@
                 if ($("#interfaces").val().length > 0) {
                     ajaxGet('/api/diagnostics/traffic/top/' + $("#interfaces").val().join(","), {}, function(data, status){
                         if (status == 'success') {
+                            g_latest_top_data = data;
+                            g_latest_top_data_version++;
                             resolve_top_names(data);
-                            update_top_charts(g_charts['traffic_top'], data);
-                            updateTopTable(data);
+                            updateActiveTrafficView();
                             top_traffic_poller();
                         } else {
                             setTimeout(top_traffic_poller, g_charts['interval']);
@@ -637,6 +694,18 @@
             }
         });
 
+        $('#rxTopTable thead').on('click', '[data-sort]', function() {
+            g_top_table_sort = $(this).data('sort');
+            sortTopTable();
+        });
+
+        sortTopTable();
+
+        $('#maintabs a[data-toggle="tab"]').on('shown.bs.tab', function(event) {
+            $('.graph-options-container').toggle(event.target.id === 'graph_tab');
+            updateActiveTrafficView();
+        });
+
         // directly activate another tab
         if (window.location.hash === '#toptalkers') {
             $('#gtid_tab').trigger('click');
@@ -676,7 +745,7 @@
             </select>
             &nbsp;
         </div>
-        <div class="left">
+        <div class="left graph-options-container">
             <select class="selectpicker graph-options" id="interval" data-width="200">
                 <option value="500">500 {{ lang._('Milliseconds') }}</option>
                 <option value="1000">1 {{ lang._('Second') }}</option>
@@ -762,13 +831,13 @@
                 <thead>
                     <tr>
                         <th></th>
-                        <th>{{ lang._('Address') }}</th>
-                        <th>{{ lang._('In') }}</th>
-                        <th>{{ lang._('Out') }}</th>
-                        <th>{{ lang._('In max') }}</th>
-                        <th>{{ lang._('Out max') }}</th>
-                        <th>{{ lang._('Total In') }}</th>
-                        <th>{{ lang._('Total Out') }}</th>
+                        <th data-sort="default">{{ lang._('Address') }}</th>
+                        <th data-sort="bps_in">{{ lang._('In') }}</th>
+                        <th data-sort="bps_out">{{ lang._('Out') }}</th>
+                        <th data-sort="bps_max_in">{{ lang._('In max') }}</th>
+                        <th data-sort="bps_max_out">{{ lang._('Out max') }}</th>
+                        <th data-sort="total_in">{{ lang._('Total In') }}</th>
+                        <th data-sort="total_out">{{ lang._('Total Out') }}</th>
                         <th>{{ lang._('First seen') }}</th>
                         <th>{{ lang._('Last seen') }}</th>
                     </tr>
