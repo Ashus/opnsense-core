@@ -248,13 +248,15 @@
                             mode: 'nearest',
                             intersect: false,
                             callbacks: {
-                                label: function(context) {
-                                    let split = context.formattedValue.split(",")[0]
-                                    let time = split.replace('(', '')
-                                    return [
-                                        time,
-                                        context.dataset.label + ": " + context.dataset.data[context.dataIndex].address,
-                                        "@ " + format_field(context.dataset.data[context.dataIndex].y).toString()
+                                 label: function(context) {
+                                     let split = context.formattedValue.split(",")[0]
+                                     let time = split.replace('(', '')
+                                     let point = context.dataset.data[context.dataIndex];
+                                     let host = point.rname ? point.rname + " (" + point.address + ")" : point.address;
+                                     return [
+                                         time,
+                                         context.dataset.label + ": " + host,
+                                         "@ " + format_field(point.y).toString()
                                     ];
                                 }
                             }
@@ -481,6 +483,18 @@
                     );
                 }
             });
+            g_charts['traffic_top'].forEach(function(chart) {
+                chart.config.data.datasets.forEach(function(dataset) {
+                    dataset.data.forEach(function(point) {
+                        if (names[point.address]) {
+                            point.rname = names[point.address];
+                        }
+                    });
+                });
+                if (isGraphTabActive()) {
+                    chart.update('quiet');
+                }
+            });
         }
 
         function resolve_top_names(data) {
@@ -675,9 +689,10 @@
                             for (var i=0; i < data[intf]['records'].length ; ++i) {
                                 dataset.data.push({
                                     x: Date.now(),
-                                    y: data[intf]['records'][i]['rate_bits_' + dataset.src_field],
-                                    r: 4,
-                                    address: data[intf]['records'][i]['address']
+                                     y: data[intf]['records'][i]['rate_bits_' + dataset.src_field],
+                                     r: 4,
+                                     address: data[intf]['records'][i]['address'],
+                                     rname: data[intf]['records'][i]['rname']
                                 });
                             }
                             return;
